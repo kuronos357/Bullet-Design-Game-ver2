@@ -4,6 +4,7 @@ using System.Collections.Generic;
 public class プレイヤー制御 : MonoBehaviour
 
 
+
 /// <summary>
 /// 機体操作を制御するコンポーネント
 /// シューティングゲームの主人公機体の動きを管理します

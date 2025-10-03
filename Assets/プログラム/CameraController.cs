@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class カメラ制御 : MonoBehaviour
+public class  PlayerController : MonoBehaviour
 
 
 /// <summary>

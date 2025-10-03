@@ -1,0 +1,4 @@
+repository "Bullet Design Game ver2@kuronos357@cloud"
+  path "/"
+    br "/main"
+    co "/main"

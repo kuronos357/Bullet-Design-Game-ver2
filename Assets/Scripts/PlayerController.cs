@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-public class プレイヤー制御 : MonoBehaviour
+public class  PlayerController : MonoBehaviour
 
 
 

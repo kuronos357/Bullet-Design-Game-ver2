@@ -1,123 +1,102 @@
 using UnityEngine;
 
-public class   CameraController : MonoBehaviour
-
-
-/// <summary>
-/// 機体の動きに合わせてカメラが追従し、画面中央から機体がずれる効果を表現します
-/// </summary>
+public class CameraController : MonoBehaviour
 {
-    [Header("ターゲット設定")]
-    [Tooltip("追従する対象（プレイヤー機体）")]
-    [SerializeField] private Transform 追従対象;
-
     [Header("カメラ位置の設定")]
-    [Tooltip("対象から見たカメラの座標")]
-    [SerializeField] private Vector3 カメラオフセット = new Vector3(0, 0, -5);
-    
-    [Tooltip("カメラ移動のスムージング係数（大きいほど滑らか/遅い）")]
-    [SerializeField] private float スムーズ速度 = 0.125f;
+    [Tooltip("親オブジェクトからの基本オフセット座標")]
+    [SerializeField] private Vector3 カメラオフセット = new Vector3(0, 1.5f, -5f);
+
+    [Tooltip("ローカル座標移動のスムージング係数")]
+    [SerializeField] private float スムーズ速度 = 0.1f;
 
     [Header("視点設定")]
     [Tooltip("どれだけ前方を見るか（大きいほど前方を見る）")]
     [SerializeField] private float 前方注視係数 = 2.0f;
-    
-    [Tooltip("画面中央からのずれ係数（大きいほどずれる）")]
-    [SerializeField] private float 中心からのオフセット = 0.3f;
+
+    [Header("加速度によるオフセット")]
+    [Tooltip("加速度に基づく画面中央からのずれ係数")]
+    [SerializeField] private float 加速度オフセット係数 = 0.1f;
+
+    [Tooltip("加速度オフセットのスムージング係数")]
+    [SerializeField] private float オフセットスムーズ速度 = 0.1f;
 
     // 内部変数
-    private Vector3 速度ベクトル = Vector3.zero; // SmoothDamp用の参照速度
-    private Vector3 前回の対象位置;            // 速度計算用
-    private Vector3 対象速度;                  // 計算された対象の移動速度
+    private Transform 追従対象; // 親オブジェクト（プレイヤー）
+    private Vector3 localPosSmoothVel;
+    private Vector3 prevTargetPos;
+    private Vector3 prevTargetVel;
+    private Vector3 accelOffset;
+    private Vector3 accelOffsetSmoothVel;
 
-    /// <summary>
-    /// 初期化処理
-    /// </summary>
     private void Start()
     {
-        // 追従対象が設定されているか確認
+        追従対象 = transform.parent;
         if (追従対象 == null)
         {
-            Debug.LogWarning("カメラの追従対象が設定されていません！");
+            Debug.LogError("カメラがどのオブジェクトの子にもなっていません！プレイヤーの子オブジェクトに設定してください。");
+            enabled = false; // スクリプトを無効化
             return;
         }
 
-        // 初期位置を記録
-        前回の対象位置 = 追従対象.position;
-        Debug.Log("初期化が完了しました");
+        // 初期化
+        prevTargetPos = 追従対象.position;
+        prevTargetVel = Vector3.zero;
+        accelOffset = Vector3.zero;
+        accelOffsetSmoothVel = Vector3.zero;
+        localPosSmoothVel = Vector3.zero;
+
+        // 自身の初期ローカル位置をオフセット値に設定
+        transform.localPosition = カメラオフセット;
     }
 
-    /// <summary>
-    /// すべての更新処理後に実行（カメラ更新に最適）
-    /// </summary>
     private void LateUpdate()
     {
-        // 追従対象が無効化されている場合は何もしない
         if (追従対象 == null) return;
 
-        // 対象の移動速度を計算（位置の変化量÷経過時間）
-        対象速度 = (追従対象.position - 前回の対象位置) / Time.deltaTime;
-        前回の対象位置 = 追従対象.position;
+        // 1. 親（追従対象）の速度と加速度を計算
+        Vector3 targetVel = (追従対象.position - prevTargetPos) / Time.deltaTime;
+        prevTargetPos = 追従対象.position;
+        Vector3 targetAccel = (targetVel - prevTargetVel) / Time.deltaTime;
+        prevTargetVel = targetVel;
 
-        // 水平方向の速度成分のみを取得（上下動は無視）
-        Vector3 水平速度 = new Vector3(対象速度.x, 0, 対象速度.z);
-        float 速度の大きさ = 水平速度.magnitude;
-        
-        // 速度方向に基づくオフセット位置の計算
-        Vector3 正規化速度 = 水平速度.normalized; // 方向のみの単位ベクトル
-        Vector3 オフセット位置 = 追従対象.position;
-        
-        // 一定以上の速度がある場合のみオフセットを適用
-        if (速度の大きさ > 0.1f)
+        // 2. 加速度に基づくオフセットを計算（Y軸は無視）
+        Vector3 horizontalAccel = new Vector3(targetAccel.x, 0, targetAccel.z);
+        Vector3 targetAccelOffset = Vector3.zero;
+        if (horizontalAccel.magnitude > 0.1f)
         {
-            // AC風の効果：進行方向の反対側にオフセット
-            // 速度が速いほどオフセットが大きくなる
-            オフセット位置 -= 正規化速度 * 中心からのオフセット * 速度の大きさ;
+            // 加速方向と逆向きにオフセット
+            targetAccelOffset = -horizontalAccel.normalized * horizontalAccel.magnitude * 加速度オフセット係数;
         }
 
-        // 注視点の計算（対象の前方）
-        Vector3 注視位置 = 追従対象.position + 追従対象.forward * 前方注視係数;
-        
-        // カメラの目標位置を計算
-        // 1. オフセット位置から対象の後方に移動
-        // 2. 高さを追加
-        Vector3 目標位置 = オフセット位置 - 追従対象.forward * カメラオフセット.z + Vector3.up * カメラオフセット.y;
-        
-        // スムーズにカメラを移動
-        transform.position = Vector3.SmoothDamp(
-            transform.position, // 現在のカメラ位置
-            目標位置,           // 目標位置
-            ref 速度ベクトル,   // 速度参照（内部で更新される）
-            スムーズ速度        // スムーズ化の度合い
-        );
-        
-        // カメラの向きを注視点に向ける
-        transform.LookAt(注視位置);
-        // カメラにロール角を適用（Z軸回転を継承）
-        Vector3 機体の回転 = 追従対象.rotation.eulerAngles;
-        Vector3 カメラの回転 = transform.rotation.eulerAngles;
+        // 3. 加速度オフセットをスムーズに適用
+        accelOffset = Vector3.SmoothDamp(accelOffset, targetAccelOffset, ref accelOffsetSmoothVel, オフセットスムーズ速度);
 
-        // Z軸だけ追従対象に合わせる（X,YはLookAtに任せる）
-        transform.rotation = Quaternion.Euler(カメラの回転.x, カメラの回転.y, 機体の回転.z);
+        // 4. 基本オフセットと加速度オフセットを合成して、目標ローカル座標を決定
+        Vector3 targetLocalPos = カメラオフセット + accelOffset;
 
+        // 5. 現在のローカル座標を目標値にスムーズに移動
+        transform.localPosition = Vector3.SmoothDamp(transform.localPosition, targetLocalPos, ref localPosSmoothVel, スムーズ速度);
 
+        // 6. カメラの向きを計算
+        Vector3 lookAtPos = 追従対象.position + 追従対象.forward * 前方注視係数;
+        Quaternion targetRotation = Quaternion.LookRotation(lookAtPos - transform.position);
+
+        // 7. 親のZ軸回転（ロール）を合成
+        Quaternion roll = Quaternion.Euler(0, 0, 追従対象.eulerAngles.z);
+        
+        // 8. 最終的な向きを適用
+        transform.rotation = targetRotation * roll;
     }
 
-    /// <summary>
-    /// ギズモ描画（デバッグ用）
-    /// エディタ上でカメラの追従対象と注視点を視覚化
-    /// </summary>
     private void OnDrawGizmos()
     {
+        if (追従対象 == null) 追従対象 = transform.parent;
         if (追従対象 == null) return;
-        
-        // 追従対象との線を描画
-        Gizmos.color = Color.blue;
-        Gizmos.DrawLine(transform.position, 追従対象.position);
-        
+
         // 注視点を描画
-        Vector3 注視位置 = 追従対象.position + 追従対象.forward * 前方注視係数;
         Gizmos.color = Color.red;
-        Gizmos.DrawSphere(注視位置, 0.2f);
+        Vector3 lookAtPoint = 追従対象.position + 追従対象.forward * 前方注視係数;
+        Gizmos.DrawSphere(lookAtPoint, 0.2f);
+        Gizmos.DrawLine(transform.position, lookAtPoint);
     }
 }

@@ -52,6 +52,8 @@ public class  PlayerController : MonoBehaviour
     private Vector3 スムーズ速度ベクトル; // SmoothDamp用の参照速度
     private float 深度移動値 = 0f;       // 前後方向の累積移動量
     private Vector3 目標位置;            // 機体の移動目標位置
+    private Vector3 previousPosition;    // 速度計算用の前フレームの位置
+    private Vector3 previousVelocity;    // 加速度計算用の前フレームの速度
 
     /// <summary>
     /// 初期化処理
@@ -72,6 +74,10 @@ public class  PlayerController : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         Debug.Log("マウスカーソルをロックしました");
+
+        // 速度・加速度計算の初期化
+        previousPosition = transform.position;
+        previousVelocity = Vector3.zero;
     }
 
     /// <summary>
@@ -82,6 +88,9 @@ public class  PlayerController : MonoBehaviour
         // 入力処理と位置更新
         入力処理();
         
+        // 速度と加速度を計算して表示
+        CalculateSpeedAndAcceleration();
+
         // カメラ位置の更新
         //カメラ位置更新();
     }
@@ -103,8 +112,6 @@ public class  PlayerController : MonoBehaviour
         if (Input.GetKey(下キー)) 垂直入力 -= 垂直速度;
         if (Input.GetKey(右回転)) transform.Rotate(Vector3.forward, -回転速度 * Time.deltaTime, Space.Self);
         if (Input.GetKey(左回転)) transform.Rotate(Vector3.forward, 回転速度 * Time.deltaTime, Space.Self);
-        // デバッグログで確認
-        Debug.Log($"水平入力: {水平入力}, 垂直入力: {垂直入力}");
 
         // ロータリーエンコーダー入力（矢印キー左右）をシミュレート
         float エンコーダー入力 = 0f;
@@ -163,10 +170,29 @@ public class  PlayerController : MonoBehaviour
         
         // 修正した回転を適用
         transform.rotation = Quaternion.Euler(現在の回転);
+    }
 
-        //速度を表示
-        Debug.Log($"移動速度: {transform.position}");
-        Debug.Log($"回転角度: {transform.rotation.eulerAngles}");
+    /// <summary>
+    /// 速度と加速度を計算し、コンソールに表示します
+    /// </summary>
+    private void CalculateSpeedAndAcceleration()
+    {
+        // 速度を計算 (フレーム間の移動距離 / 時間)
+        Vector3 velocity = (transform.position - previousPosition) / Time.deltaTime;
+        previousPosition = transform.position;
+
+        // 加速度を計算 (フレーム間の速度変化 / 時間)
+        Vector3 acceleration = (velocity - previousVelocity) / Time.deltaTime;
+        previousVelocity = velocity;
+
+        // 速度 (スカラー) はベクトル量である速度の大きさ
+        float speed = velocity.magnitude;
+
+        // 加速度の大きさ
+        float accelerationMagnitude = acceleration.magnitude;
+
+        // コンソールに表示
+        Debug.Log($"速度: {speed:F2} m/s, 加速度: {accelerationMagnitude:F2} m/s^2");
     }
 
     /// <summary>
